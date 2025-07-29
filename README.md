@@ -42,6 +42,29 @@ We add a **Gaussian damping term** $e^{-\alpha t^2}$ to stabilize numerical inte
 
 ---
 
+### 📌 Joint and Conditional Structure
+
+For a **joint distribution** $(X,Y)$:
+- The **marginal CF of $Y$** is $\phi_Y(t) = \mathbb{E}[e^{i t Y}]$.
+- The **conditional CF of $X \mid Y=y$** is $\phi_{X \mid Y=y}(s) = \mathbb{E}[e^{i s X} \mid Y=y]$.
+
+We can build the **joint CF**:
+$$
+\phi_{X,Y}(s,t) = \int_{-\infty}^\infty \phi_{X|Y=y}(s) \, e^{i t y} \, f_Y(y) \, dy,
+$$
+
+and then recover the **joint PDF**:
+$$
+f_{X,Y}(x,y) = \frac{1}{(2\pi)^2} \int_{-\infty}^{\infty} \int_{-\infty}^{\infty} 
+e^{-i (sx + ty)} \, \phi_{X,Y}(s,t) \, ds \, dt.
+$$
+
+The **marginal PDF** of $Y$ is:
+$$
+f_Y(y) = \frac{1}{2\pi} \int_{-\infty}^\infty e^{-i t y} \, \phi_{X,Y}(0,t) \, dt.
+$$
+
+
 ## 📂 Project Structure
 
 1. **CF_Inverter.py**
