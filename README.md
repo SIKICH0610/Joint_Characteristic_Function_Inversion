@@ -15,53 +15,74 @@ $$
 \phi_X(t) = \mathbb{E}\left[ e^{i t X} \right].
 $$
 
-A PDF can be recovered by **inverse Fourier transform**:
+From the **Gil-Pelaez inversion theorem**, the PDF of $X$ can be recovered using the **inverse Fourier transform**:
 
 $$
-f_X(x) = \frac{1}{2\pi} \int_{-\infty}^{\infty} e^{-i t x}  \phi_X(t) dt.
+f_X(x) = \frac{1}{2\pi} \int_{-\infty}^{\infty} e^{-i t x} \, \phi_X(t) \, dt,
 $$
 
-For **joint distributions**, if we know:
-- The marginal CF of $Y$, $\phi_Y(t)$,
-- The conditional CF of $X \mid Y=y$, $\phi_{X \mid Y=y}(s)$,
-
-then the **joint CF** is:
-
-$$
-\phi_{X,Y}(s,t) = \int_{-\infty}^\infty \phi_{X|Y=y}(s)  e^{i t y}  f_Y(y)  dy,
-$$
-
-and the joint PDF follows by **double inversion**:
-
-$$
-f_{X,Y}(x,y) = \frac{1}{(2\pi)^2} \int_{-\infty}^{\infty} \int_{-\infty}^{\infty} 
-e^{-i (sx + ty)}  \phi_{X,Y}(s,t)  ds  dt.
-$$
-
-We add a **Gaussian damping term** $e^{-\alpha t^2}$ to stabilize numerical integration.
+where a **Gaussian damping factor** $e^{-\alpha t^2}$ is introduced numerically to stabilize oscillations in the integral.
 
 ---
 
 ### 📌 Joint and Conditional Structure
 
 For a **joint distribution** $(X,Y)$:
+
 - The **marginal CF of $Y$** is $\phi_Y(t) = \mathbb{E}[e^{i t Y}]$.
 - The **conditional CF of $X \mid Y=y$** is $\phi_{X \mid Y=y}(s) = \mathbb{E}[e^{i s X} \mid Y=y]$.
 
 We can build the **joint CF**:
+
 $$
 \phi_{X,Y}(s,t) = \int_{-\infty}^\infty \phi_{X|Y=y}(s) \, e^{i t y} \, f_Y(y) \, dy,
 $$
 
 and then recover the **joint PDF**:
+
 $$
 f_{X,Y}(x,y) = \frac{1}{(2\pi)^2} \int_{-\infty}^{\infty} \int_{-\infty}^{\infty} 
 e^{-i (sx + ty)} \, \phi_{X,Y}(s,t) \, ds \, dt.
 $$
 
 The **marginal PDF** of $Y$ is:
+
 $$
 f_Y(y) = \frac{1}{2\pi} \int_{-\infty}^\infty e^{-i t y} \, \phi_{X,Y}(0,t) \, dt.
+$$
+
+
+---
+
+### 🎯 Computing Probabilities
+
+### 1. Univariate Probability
+
+Once PDFs are obtained, probabilities are computed via integration.
+
+### 2. Joint Probability
+
+For $(X,Y)$:
+
+$$
+P(X > a, \; Y \in [y_1, y_2]) 
+= \int_{y_1}^{y_2} \int_a^\infty f_{X,Y}(x,y) \, dx \, dy.
+$$
+
+### 3. Conditional Probability
+
+For a single $y$:
+
+$$
+P(X > a \mid Y = y) = \frac{\int_a^\infty f_{X,Y}(x,y) \, dx}{f_Y(y)}.
+$$
+
+For a range $Y \in [y_1, y_2]$:
+
+$$
+P(X > a \mid Y \in [y_1,y_2]) 
+= \frac{\int_{y_1}^{y_2} \int_a^\infty f_{X,Y}(x,y) \, dx \, dy}
+       {\int_{y_1}^{y_2} f_Y(y) \, dy}.
 $$
 
 
@@ -85,4 +106,4 @@ $$
         - `marginal_pdf_Y()` – Marginal density $f_Y(y)$  
         - `conditional_pdf_X_given_Y()` – Conditional density $f(X|Y=y)$  
         - `conditional_probability()` – Compute $P(X > a \mid Y=y)$ or $P(X > a \mid Y \in [y_1,y_2])$  
-        - `plot_joint_pdf()` – Contour/surface plotting  
+        - `plot_joint_pdf()` – Contour/surface plotting
