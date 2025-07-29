@@ -1,5 +1,5 @@
 import numpy as np
-from ..Joint_Helper import make_cf
+from Joint_Helper import NormalCF
 from scipy.stats import norm
 
 # Normal Distribution Example

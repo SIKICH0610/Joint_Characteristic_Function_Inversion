@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import uniform
-from CF_Inverter import UniformCF
+from Joint_Helper import UniformCF
 
 # Uniform Distribution Example
 uniform_cf = UniformCF(a=0, b=2)
