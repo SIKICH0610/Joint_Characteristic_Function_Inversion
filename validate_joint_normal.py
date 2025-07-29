@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.stats import norm
 from Joint_Helper import make_cf, make_conditional_cf
-from JointCharacteristicFunctionInverter import JointCharacteristicFunctionInverter
+from Joint_Helper import JointCharacteristicFunctionInverter
 
 # Define Y ~ Normal(0,1)
 cf_y = make_cf("normal", {"mu": 0, "sigma": 1})

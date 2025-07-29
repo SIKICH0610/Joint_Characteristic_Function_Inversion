@@ -1,6 +1,6 @@
 import numpy as np
+from ..Joint_Helper import make_cf
 from scipy.stats import norm
-from CF_Inverter import NormalCF
 
 # Normal Distribution Example
 normal_cf = NormalCF()
