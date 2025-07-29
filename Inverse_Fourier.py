@@ -60,7 +60,7 @@ class JointCharacteristicFunctionInverter:
             return 0.0
         return joint / marginal
 
-    def conditional_probability(self, a, y, x_upper=10):
+    def conditional_probability(self, a, y, x_upper=5):
         """
         Compute P(X > a | Y = y)         if y is a number,
         or     P(X > a | Y in y_range)   if y is a tuple (low, high)
@@ -71,7 +71,8 @@ class JointCharacteristicFunctionInverter:
             # Numerator: P(X > a and Y in [y_low, y_high])
             def joint_integrand(y_, x):
                 return self.joint_pdf(x, y_)
-
+            
+            print(2)
             joint_prob, _ = dblquad(joint_integrand,
                                     y_low, y_high,
                                     lambda _: a, lambda _: x_upper)
@@ -90,7 +91,11 @@ class JointCharacteristicFunctionInverter:
         else:
             # y is a single float value — point conditioning
             integrand = lambda x: self.conditional_pdf_X_given_Y(x, y)
+            print(2)
             prob, _ = quad(integrand, a, x_upper)
+            # x_vals = np.linspace(a, x_upper, 2000)
+            # pdf_vals = np.array([self.conditional_pdf_X_given_Y(x, y) for x in x_vals])
+            # prob = np.trapz(pdf_vals, x_vals)
             return prob
 
     # def conditional_probability_point(self, a, y, x_upper=10):
