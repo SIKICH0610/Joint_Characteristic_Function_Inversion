@@ -9,10 +9,10 @@ This project implements **probability density function (PDF) recovery and condit
 
 ## 🔑 Key Idea
 
-The **characteristic function (CF)** of a random variable \(X\) is defined as:
-\[
+The **characteristic function (CF)** of a random variable $X$ is defined as:
+$$
 \phi_X(t) = \mathbb{E}\left[ e^{i t X} \right].
-\]
+$$
 
 A PDF can be recovered by **inverse Fourier transform**:
 \[
