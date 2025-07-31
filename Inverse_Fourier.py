@@ -6,12 +6,13 @@ from mpl_toolkits.mplot3d import Axes3D
 from Joint_Helper import make_cf, make_conditional_cf, CharacteristicFunctionInverter, NormalCF
 
 class JointCharacteristicFunctionInverter:
-    def __init__(self, cf_x, cf_y, joint_phi):
+    def __init__(self, cf_x, cf_y, joint_phi, use_fejer=True):
         self.cf_x = cf_x
         self.cf_y = cf_y
         self.phi_joint = joint_phi
         self.Lx = cf_x.L
         self.Ly = cf_y.L
+        self.use_fejer = use_fejer  # Toggle Fejér summation
 
     @classmethod
     def from_conditional(cls, cf_y, conditional_cf_given_y, y_support=(0, 20), p_y=None, damping_alpha=0.01):
@@ -41,24 +42,37 @@ class JointCharacteristicFunctionInverter:
 
         return cls(cf_x=dummy_cf_x, cf_y=cf_y, joint_phi=phi_joint)
 
+    def _fejer_weight(self, s, L):
+        """Fejér kernel weight: (1 - |s|/L)"""
+        return max(1 - abs(s) / L, 0) if self.use_fejer else 1.0
+    
     def joint_pdf(self, x, y):
-        integrand = lambda s, t: np.real(
-            np.exp(-1j * (s * x + t * y)) * self.phi_joint(s, t)
-        )
-        val, _ = dblquad(integrand, -self.Ly, self.Ly, lambda _: -self.Lx, lambda _: self.Lx)
+        """Compute joint PDF f_{X,Y}(x,y) with Fejér weighting"""
+        def integrand(s, t):
+            w_s = self._fejer_weight(s, self.Lx)
+            w_t = self._fejer_weight(t, self.Ly)
+            return np.real(
+                np.exp(-1j * (s * x + t * y)) *
+                self.phi_joint(s, t) *
+                w_s * w_t
+            )
+        val, _ = dblquad(integrand, -self.Ly, self.Ly,
+                         lambda _: -self.Lx, lambda _: self.Lx)
         return val / (4 * np.pi**2)
 
     def marginal_pdf_Y(self, y):
-        integrand = lambda t: np.real(np.exp(-1j * t * y) * self.phi_joint(0, t))
-        val, _ = quad(integrand, -self.Ly, self.Ly)
+        """Compute marginal PDF f_Y(y) with Fejér weighting"""
+        def integrand(t):
+            w_t = self._fejer_weight(t, self.Ly)
+            return np.real(np.exp(-1j * t * y) * self.phi_joint(0, t) * w_t)
+        val, _ = quad(integrand, -self.Ly, self.Ly, limit=300)
         return val / (2 * np.pi)
 
     def conditional_pdf_X_given_Y(self, x, y):
+        """Compute conditional PDF f_{X|Y}(x|y) using joint and marginal"""
         joint = self.joint_pdf(x, y)
         marginal = self.marginal_pdf_Y(y)
-        if marginal < 1e-12:
-            return 0.0
-        return joint / marginal
+        return 0.0 if marginal < 1e-12 else joint / marginal
 
     def conditional_probability(self, a, y, x_upper=5, damping_alpha=0.1):
         """
@@ -107,37 +121,56 @@ class JointCharacteristicFunctionInverter:
     #     prob, _ = quad(integrand, a, x_upper)
     #     return prob
 
-    def plot_joint_pdf(self, x_range, y_range, num_points=100, plot_type='contour'):
+    def show_expression(self, s=0.0, t=0.0, y_sample=0.0):
         """
-        Plot the joint PDF over a 2D grid.
+        Display the underlying CF and PDF structure for debugging.
+        - Shows the expression of marginal CF, conditional CF, and joint CF.
+        - Evaluates them at sample points to confirm they work.
+        """
+        print("=== Expression Inspection ===")
+        
+        # Marginal CF (Y)
+        if hasattr(self.cf_y, "expression_str") and self.cf_y.expression_str:
+            print(f"Marginal CF φ_Y(t): {self.cf_y.expression_str}")
+        else:
+            print("Marginal CF φ_Y(t): (lambda, no expression string available)")
+        print(f"  φ_Y({t}) = {self.cf_y.phi(t)}")
 
-        plot_type: 'contour' or 'surface'
+        # Joint CF (s,t)
+        print("\nJoint CF φ_{X,Y}(s,t):")
+        print("  Defined as integral over Y of φ_{X|Y}(s) * exp(i t y) * f_Y(y)")
+        print(f"  φ_{{X,Y}}({s},{t}) = {self.phi_joint(s,t)}")
+
+        # Conditional PDF check
+        print("\nSample Conditional PDF f_{X|Y}(x|y):")
+        x_test = 0.0
+        cond_pdf = self.conditional_pdf_X_given_Y(x_test, y_sample)
+        print(f"  f_{'{'}X|Y{'}'}({x_test}|Y={y_sample}) = {cond_pdf}")
+
+    def plot_conditional_pdf(self, y_values, x_range=(-5, 5), num_points=300, true_pdf=None):
+        """
+        Visualize the conditional PDF f_{X|Y=y}(x) for given y values.
+        
+        Parameters:
+            y_values: list of y points (e.g., [0, 1, -1]) for conditioning.
+            x_range: tuple for X-axis (min, max).
+            num_points: resolution for X-axis.
+            true_pdf: optional callable true PDF f(x|y) for comparison (e.g., analytical normal pdf).
         """
         x_vals = np.linspace(*x_range, num_points)
-        y_vals = np.linspace(*y_range, num_points)
-        X, Y = np.meshgrid(x_vals, y_vals)
-        Z = np.zeros_like(X)
+        plt.figure(figsize=(8, 6))
 
-        # Compute joint_pdf at each grid point
-        for i in range(num_points):
-            for j in range(num_points):
-                Z[i, j] = self.joint_pdf(X[i, j], Y[i, j])
+        for y in y_values:
+            pdf_vals = [self.conditional_pdf_X_given_Y(x, y) for x in x_vals]
+            plt.plot(x_vals, pdf_vals, label=f"Reconstructed f(X|Y={y})")
 
-        if plot_type == 'contour':
-            plt.figure(figsize=(8, 6))
-            cp = plt.contourf(X, Y, Z, levels=100, cmap='viridis')
-            plt.xlabel('x')
-            plt.ylabel('y')
-            plt.title('Joint PDF f(x, y)')
-            plt.colorbar(cp, label='Density')
-            plt.show()
+            if true_pdf is not None:
+                true_vals = [true_pdf(x, y) for x in x_vals]
+                plt.plot(x_vals, true_vals, '--', label=f"True f(X|Y={y})")
 
-        elif plot_type == 'surface':
-            fig = plt.figure(figsize=(10, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none')
-            ax.set_xlabel('x')
-            ax.set_ylabel('y')
-            ax.set_zlabel('Density')
-            ax.set_title('Joint PDF f(x, y)')
-            plt.show()
+        plt.xlabel("x")
+        plt.ylabel("Density")
+        plt.title("Conditional PDFs f(X|Y=y)")
+        plt.legend()
+        plt.grid(True)
+        plt.show()

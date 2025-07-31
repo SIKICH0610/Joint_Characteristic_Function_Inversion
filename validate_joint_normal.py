@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from scipy.stats import norm
 from Joint_Helper import make_cf, make_conditional_cf
 from Inverse_Fourier import JointCharacteristicFunctionInverter
@@ -13,19 +15,34 @@ conditional_cf = make_conditional_cf("normal", {"mean": "2*y", "var": 1.0})
 joint_cf = JointCharacteristicFunctionInverter.from_conditional(
     cf_y=cf_y,
     conditional_cf_given_y=conditional_cf,
-    y_support=(-5, 5),                      # integration support for Y
-    p_y=lambda y: norm.pdf(y, 0, 1),        # PDF of Y
-    damping_alpha=0.01                      # small damping for stability
+    y_support=(-5, 5),
+    p_y=lambda y: norm.pdf(y, 0, 1),
+    damping_alpha=0.01
 )
 
-print(1)
-# Step 4: Compute P(X > 0 | Y = a)
-a_values = [0, 1, -1]
-for y_val in a_values:
-    prob = joint_cf.conditional_probability(a=0.0, y=y_val)   # P(X>0 | Y=y)
-    print(f"P(X > 0 | Y={y_val}) = {prob:.6f}")
+joint_cf.use_fejer = True  # Enable Fejér summation
 
-# Analytical check: P(X > 0 | Y=y) = Phi(2*y)
+# Step 4: Visualization of reconstructed conditional PDFs
+y_values = [0, 1, -1]  # Y points for conditioning
+true_conditional_pdf = lambda x, y: norm.pdf(x, loc=2*y, scale=1.0)
+
+print("\n=== Plotting Conditional PDFs for Visual Check ===")
+joint_cf.show_expression()
+joint_cf.plot_conditional_pdf(
+    y_values=y_values,
+    x_range=(-6, 6),
+    true_pdf=true_conditional_pdf
+)
+
+# Step 4: Compute P(X > 0 | Y=y) numerically
 for y_val in a_values:
-    analytical = 1 - norm.cdf(0, loc=2*y_val, scale=1)
-    print(f"Analytical: P(X > 0 | Y={y_val}) = {analytical:.6f}")
+    prob_numeric = joint_cf.conditional_probability(a=0.0, y=y_val)
+    print(f"P(X > 0 | Y={y_val}) [Numerical] = {prob_numeric:.6f}")
+
+print("\n=== Analytical Validation ===")
+# Analytical check: P(X > 0 | Y=y) = Φ(2y)
+for y_val in a_values:
+    prob_analytical = norm.cdf(2 * y_val)  # Equivalent to 1 - CDF(0 | mean=2y)
+    print(f"P(X > 0 | Y={y_val}) [Analytical] = {prob_analytical:.6f}")
+
+print("\nValidation complete: Numerical results should closely match analytical values.")
