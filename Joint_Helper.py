@@ -17,15 +17,30 @@ class CharacteristicFunctionInverter:
     def pdf_grid(self, x_vals):
         return np.array([self.pdf(x) for x in x_vals])
 
-    def plot_pdf(self, x_vals, true_pdf=None, label='Recovered PDF'):
+    def plot_pdf(self, x_vals, true_pdf=None, label='Recovered PDF', dist_expression=None):
+        """
+        Plot the PDF recovered from the characteristic function.
+
+        Parameters:
+            x_vals: array of x points
+            true_pdf: optional callable for analytical PDF
+            label: legend label for recovered PDF
+            dist_expression: optional LaTeX-style string for random variable, e.g., r"$N(0,1)$"
+        """
         approx_pdf = self.pdf_grid(x_vals)
 
         plt.plot(x_vals, approx_pdf, label=label)
         if true_pdf is not None:
             plt.plot(x_vals, true_pdf, '--', label='True PDF')
+
         plt.xlabel("x")
         plt.ylabel("Density")
-        plt.title("PDF Recovered from Characteristic Function")
+
+        if dist_expression:
+            plt.title(f"{dist_expression} PDF recovered from CF")
+        else:
+            plt.title("PDF Recovered from Characteristic Function")
+
         plt.grid(True)
         plt.legend()
         plt.show()

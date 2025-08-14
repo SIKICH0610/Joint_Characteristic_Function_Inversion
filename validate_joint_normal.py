@@ -15,7 +15,7 @@ conditional_cf = make_conditional_cf("normal", {"mean": "2*y", "var": 1.0})
 joint_cf = JointCharacteristicFunctionInverter.from_conditional(
     cf_y=cf_y,
     conditional_cf_given_y=conditional_cf,
-    y_support=(-5, 5),
+    y_support=(-10, 10),
     p_y=lambda y: norm.pdf(y, 0, 1),
     damping_alpha=0.01
 )
@@ -30,7 +30,7 @@ print("\n=== Plotting Conditional PDFs for Visual Check ===")
 joint_cf.show_expression()
 joint_cf.plot_conditional_pdf(
     y_values=y_values,
-    x_range=(-6, 6),
+    x_range=(-10, 10),
     true_pdf=true_conditional_pdf
 )
 

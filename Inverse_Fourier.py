@@ -4,6 +4,8 @@ from scipy.stats import norm, expon, uniform
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from Joint_Helper import make_cf, make_conditional_cf, CharacteristicFunctionInverter, NormalCF
+from numpy.fft import fftshift, ifft2, fftfreq
+from scipy.interpolate import RegularGridInterpolator
 
 class JointCharacteristicFunctionInverter:
     def __init__(self, cf_x, cf_y, joint_phi, use_fejer=True):
@@ -56,8 +58,10 @@ class JointCharacteristicFunctionInverter:
                 self.phi_joint(s, t) *
                 w_s * w_t
             )
+
         val, _ = dblquad(integrand, -self.Ly, self.Ly,
                          lambda _: -self.Lx, lambda _: self.Lx)
+        print(1)
         return val / (4 * np.pi**2)
 
     def marginal_pdf_Y(self, y):
@@ -66,6 +70,7 @@ class JointCharacteristicFunctionInverter:
             w_t = self._fejer_weight(t, self.Ly)
             return np.real(np.exp(-1j * t * y) * self.phi_joint(0, t) * w_t)
         val, _ = quad(integrand, -self.Ly, self.Ly, limit=300)
+        print(2)
         return val / (2 * np.pi)
 
     def conditional_pdf_X_given_Y(self, x, y):
@@ -108,7 +113,7 @@ class JointCharacteristicFunctionInverter:
             def integrand(x):
                 pdf_val = self.conditional_pdf_X_given_Y(x, y)
                 return pdf_val * np.exp(-damping_alpha * x**2)  # Gaussian damping on conditional PDF
-            print(2)
+            print(4)
             prob, _ = quad(integrand, a, x_upper, epsabs=1e-8, epsrel=1e-6, limit=200)
             # prob, _ = quad(integrand, a, x_upper)
             # x_vals = np.linspace(a, x_upper, 2000)
@@ -128,7 +133,7 @@ class JointCharacteristicFunctionInverter:
         - Evaluates them at sample points to confirm they work.
         """
         print("=== Expression Inspection ===")
-        
+
         # Marginal CF (Y)
         if hasattr(self.cf_y, "expression_str") and self.cf_y.expression_str:
             print(f"Marginal CF φ_Y(t): {self.cf_y.expression_str}")
@@ -145,6 +150,7 @@ class JointCharacteristicFunctionInverter:
         print("\nSample Conditional PDF f_{X|Y}(x|y):")
         x_test = 0.0
         cond_pdf = self.conditional_pdf_X_given_Y(x_test, y_sample)
+        print(cond_pdf)
         print(f"  f_{'{'}X|Y{'}'}({x_test}|Y={y_sample}) = {cond_pdf}")
 
     def plot_conditional_pdf(self, y_values, x_range=(-5, 5), num_points=300, true_pdf=None):
@@ -157,6 +163,7 @@ class JointCharacteristicFunctionInverter:
             num_points: resolution for X-axis.
             true_pdf: optional callable true PDF f(x|y) for comparison (e.g., analytical normal pdf).
         """
+        print(3)
         x_vals = np.linspace(*x_range, num_points)
         plt.figure(figsize=(8, 6))
 
