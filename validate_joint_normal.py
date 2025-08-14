@@ -20,7 +20,10 @@ joint_cf = JointCharacteristicFunctionInverter.from_conditional(
     damping_alpha=0.01
 )
 
-joint_cf.use_fejer = True  # Enable Fejér summation
+joint_cf.use_fejer = True  # keep tapering
+
+# >>> NEW: route conditional density calls through the 1D slice-then-invert
+joint_cf.conditional_pdf_X_given_Y = joint_cf.conditional_pdf_via_1d
 
 # Step 4: Visualization of reconstructed conditional PDFs
 y_values = [0, 1, -1]  # Y points for conditioning
@@ -34,15 +37,9 @@ joint_cf.plot_conditional_pdf(
     true_pdf=true_conditional_pdf
 )
 
-# Step 4: Compute P(X > 0 | Y=y) numerically
-for y_val in a_values:
-    prob_numeric = joint_cf.conditional_probability(a=0.0, y=y_val)
-    print(f"P(X > 0 | Y={y_val}) [Numerical] = {prob_numeric:.6f}")
-
-print("\n=== Analytical Validation ===")
-# Analytical check: P(X > 0 | Y=y) = Φ(2y)
-for y_val in a_values:
-    prob_analytical = norm.cdf(2 * y_val)  # Equivalent to 1 - CDF(0 | mean=2y)
-    print(f"P(X > 0 | Y={y_val}) [Analytical] = {prob_analytical:.6f}")
-
-print("\nValidation complete: Numerical results should closely match analytical values.")
+# Step 5: Compute P(X > 0 | Y=y) numerically (no x-domain damping → unbiased)
+print("\n=== Numeric vs Analytical: P(X>0 | Y=y) ===")
+for y_val in y_values:  # (fixed: was a_values)
+    prob_numeric = joint_cf.conditional_probability(a=0.0, y=y_val, x_upper=10, damping_alpha=0.0)
+    prob_analytical = norm.cdf(2 * y_val)   # since X|Y=y ~ N(2y, 1)
+    print(f"y={y_val:>3}: numeric={prob_numeric:.6f} | analytical={prob_analytical:.6f}")

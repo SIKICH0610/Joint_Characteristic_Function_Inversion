@@ -28,41 +28,60 @@ class JointCharacteristicFunctionInverter:
         """
 
         def phi_joint(s, t):
-            integrand = lambda y: np.real(
-                np.exp(1j * t * y) *
-                conditional_cf_given_y(y)(s) *
-                (p_y(y) if p_y else 1.0) *
-                np.exp(-damping_alpha * y ** 2)  # <--- damping here
-            )
-            val, _ = quad(integrand, *y_support, limit=200)
-            return val
+            def g(y):
+                return (np.exp(1j * t * y) *
+                        conditional_cf_given_y(y)(s) *
+                        (p_y(y) if p_y else 1.0) *
+                        np.exp(-damping_alpha * y * y))
 
-        dummy_cf_x = CharacteristicFunctionInverter(
-            phi=lambda s: 1 / (1 + s ** 2),  # dummy
-            integration_limit=cf_y.L
-        )
+            re, _ = quad(lambda yy: np.real(g(yy)), *y_support, limit=200)
+            im, _ = quad(lambda yy: np.imag(g(yy)), *y_support, limit=200)
+            return re + 1j * im
 
+        dummy_cf_x = CharacteristicFunctionInverter(phi=lambda s: 1 / (1 + s ** 2), integration_limit=cf_y.L)
         return cls(cf_x=dummy_cf_x, cf_y=cf_y, joint_phi=phi_joint)
+
+    # --- NEW: compute ψ_y(s) = (1/2π) ∫ e^{-i t y} φ_XY(s,t) dt ---
+    def conditional_cf_slice(self, y):
+        def psi(s):
+            # integrate complex integrand over t
+            re, _ = quad(lambda t: np.real(np.exp(-1j * t * y) * self.phi_joint(s, t)), -self.Ly, self.Ly, limit=300)
+            im, _ = quad(lambda t: np.imag(np.exp(-1j * t * y) * self.phi_joint(s, t)), -self.Ly, self.Ly, limit=300)
+            return (re + 1j * im) / (2 * np.pi)
+
+        return psi
+
+    # --- NEW: 1D inversion in s to get f_{X|Y=y}(x) ---
+    def conditional_pdf_via_1d(self, x, y):
+        fY = self.marginal_pdf_Y(y)
+        if fY < 1e-14:
+            return 0.0
+        psi = self.conditional_cf_slice(y)
+
+        def integrand(s):
+            w_s = self._fejer_weight(s, self.Lx)
+            return np.exp(-1j * s * x) * (psi(s) / fY) * w_s
+
+        re, _ = quad(lambda s: np.real(integrand(s)), -self.Lx, self.Lx, limit=300)
+        im, _ = quad(lambda s: np.imag(integrand(s)), -self.Lx, self.Lx, limit=300)
+        return np.real((re + 1j * im) / (2 * np.pi))
 
     def _fejer_weight(self, s, L):
         """Fejér kernel weight: (1 - |s|/L)"""
         return max(1 - abs(s) / L, 0) if self.use_fejer else 1.0
-    
+
     def joint_pdf(self, x, y):
-        """Compute joint PDF f_{X,Y}(x,y) with Fejér weighting"""
-        def integrand(s, t):
+        def integrand(t, s):  # note: dblquad calls f(y,x): outer var first
             w_s = self._fejer_weight(s, self.Lx)
             w_t = self._fejer_weight(t, self.Ly)
-            return np.real(
-                np.exp(-1j * (s * x + t * y)) *
-                self.phi_joint(s, t) *
-                w_s * w_t
-            )
+            return np.exp(-1j * (s * x + t * y)) * self.phi_joint(s, t) * w_s * w_t
 
-        val, _ = dblquad(integrand, -self.Ly, self.Ly,
-                         lambda _: -self.Lx, lambda _: self.Lx)
-        print(1)
-        return val / (4 * np.pi**2)
+        # dblquad expects integrand(t, s): inner limits are s
+        val_re, _ = dblquad(lambda tt, ss: np.real(integrand(tt, ss)),
+                            -self.Ly, self.Ly, lambda _: -self.Lx, lambda _: self.Lx)
+        val_im, _ = dblquad(lambda tt, ss: np.imag(integrand(tt, ss)),
+                            -self.Ly, self.Ly, lambda _: -self.Lx, lambda _: self.Lx)
+        return np.real((val_re + 1j * val_im) / (4 * np.pi ** 2))
 
     def marginal_pdf_Y(self, y):
         """Compute marginal PDF f_Y(y) with Fejér weighting"""
