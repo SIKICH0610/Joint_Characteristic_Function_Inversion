@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from scipy.integrate import quad, dblquad
 from scipy.stats import norm, expon, uniform
 import matplotlib.pyplot as plt
@@ -98,52 +99,82 @@ class JointCharacteristicFunctionInverter:
         marginal = self.marginal_pdf_Y(y)
         return 0.0 if marginal < 1e-12 else joint / marginal
 
-    def conditional_probability(self, a, y, x_upper=5, damping_alpha=0.1):
+    def conditional_probability(self, a, y, x_upper=10):
         """
-        Compute P(X > a | Y = y)         if y is a number,
-        or     P(X > a | Y in y_range)   if y is a tuple (low, high)
+        Compute:
+            P(X > a | Y = y)          if y is a float,
+            P(X > a | Y in [y_low,y_high]) if y is a tuple.
         """
         if isinstance(y, tuple):
             y_low, y_high = y
 
-            # Numerator: P(X > a and Y in [y_low, y_high])
+            # Numerator: joint prob
             def joint_integrand(y_, x):
                 return self.joint_pdf(x, y_)
-            
-            print(2)
+
             joint_prob, _ = dblquad(joint_integrand,
                                     y_low, y_high,
                                     lambda _: a, lambda _: x_upper)
 
-            # Denominator: P(Y in [y_low, y_high])
-            def marginal_y(y_):
-                return self.marginal_pdf_Y(y_)
+            # Denominator: marginal prob
+            marginal_prob, _ = quad(self.marginal_pdf_Y, y_low, y_high)
 
-            marginal_prob, _ = quad(marginal_y, y_low, y_high)
-
-            if marginal_prob < 1e-12:
-                return 0.0
-
-            return joint_prob / marginal_prob
+            return 0.0 if marginal_prob < 1e-12 else joint_prob / marginal_prob
 
         else:
-            # y is a single float value — point conditioning
-            # integrand = lambda x: self.conditional_pdf_X_given_Y(x, y)
+            # Point conditioning
             def integrand(x):
-                pdf_val = self.conditional_pdf_X_given_Y(x, y)
-                return pdf_val * np.exp(-damping_alpha * x**2)  # Gaussian damping on conditional PDF
-            print(4)
-            prob, _ = quad(integrand, a, x_upper, epsabs=1e-8, epsrel=1e-6, limit=200)
-            # prob, _ = quad(integrand, a, x_upper)
-            # x_vals = np.linspace(a, x_upper, 2000)
-            # pdf_vals = np.array([self.conditional_pdf_X_given_Y(x, y) for x in x_vals])
-            # prob = np.trapz(pdf_vals, x_vals)
+                return self.conditional_pdf_X_given_Y(x, y)
+
+            prob, _ = quad(integrand, a, x_upper, limit=300)
             return prob
 
     # def conditional_probability_point(self, a, y, x_upper=10):
     #     integrand = lambda x: self.conditional_pdf_X_given_Y(x, y)
     #     prob, _ = quad(integrand, a, x_upper)
     #     return prob
+
+    def conditional_probability_region_via_slices(self, a, y_range, num_points=5, x_upper=10, detailed=False):
+        """
+        Under-approximate P(X > a | Y in [y_low,y_high]) using slice evaluation + trapezoid rule.
+        Prints per-slice timing in seconds.
+        """
+        y_low, y_high = y_range
+        ys = np.linspace(y_low, y_high, num_points)
+
+        p_slices = np.empty_like(ys, dtype=float)
+        fY_vals = np.empty_like(ys, dtype=float)
+        weighted = np.empty_like(ys, dtype=float)
+        print(ys)
+
+        for i, y in enumerate(ys):
+            t_start = time.perf_counter()
+
+            p_y = self.conditional_probability(a=a, y=y, x_upper=x_upper)
+            print(p_y)
+            fY_y = self.marginal_pdf_Y(y)
+            print(fY_y)
+
+            p_slices[i] = p_y
+            fY_vals[i] = fY_y
+            weighted[i] = p_y * fY_y
+
+            # slice details (optional)
+            if detailed:
+                print(f"slice y={y: .3f}: P(X>{a}|Y=y)≈{p_y:.6f}, fY(y)={fY_y:.6f}, contrib={weighted[i]:.6f}")
+
+            # per-slice timing (always print)
+            dt = time.perf_counter() - t_start
+            print(f"[{i + 1}/{num_points}] finished slice (y={y:.6f}) in {dt:.3f}s", flush=True)
+
+        # trapezoid integration
+        num = np.trapz(weighted, ys)
+        den = np.trapz(fY_vals, ys)
+
+        if detailed:
+            print(f"Numerator trapz={num:.6e}, Denominator trapz={den:.6e}")
+
+        return 0.0 if den < 1e-14 else num / den
 
     def show_expression(self, s=0.0, t=0.0, y_sample=0.0):
         """
@@ -200,3 +231,4 @@ class JointCharacteristicFunctionInverter:
         plt.legend()
         plt.grid(True)
         plt.show()
+        return None
