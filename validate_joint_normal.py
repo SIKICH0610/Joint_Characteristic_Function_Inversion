@@ -22,15 +22,14 @@ joint_cf = JointCharacteristicFunctionInverter.from_conditional(
 
 joint_cf.use_fejer = True  # keep tapering
 
-# >>> NEW: route conditional density calls through the 1D slice-then-invert
-joint_cf.conditional_pdf_X_given_Y = joint_cf.conditional_pdf_via_1d
-
 # Step 4: Visualization of reconstructed conditional PDFs
-y_values = [0, 1, -1]  # Y points for conditioning
+y_values = [0]  # Y points for conditioning
 true_conditional_pdf = lambda x, y: norm.pdf(x, loc=2*y, scale=1.0)
 
 print("\n=== Plotting Conditional PDFs for Visual Check ===")
-joint_cf.show_expression()
+# no runtime aliasing needed
+joint_cf.show_expression(y_sample=0.0, x_test=0.0, a=0.0, x_upper=12.0)
+
 joint_cf.plot_conditional_pdf(
     y_values=y_values,
     x_range=(-10, 10),

@@ -52,19 +52,26 @@ class JointCharacteristicFunctionInverter:
 
         return psi
 
-    # --- NEW: 1D inversion in s to get f_{X|Y=y}(x) ---
-    def conditional_pdf_via_1d(self, x, y):
+    def conditional_pdf_via_1d(self, x, y, s_min=None, s_max=None, quad_limit=300):
+        """
+        f_{X|Y=y}(x) via 1D Fourier inversion in s:
+            (1/2π) ∫ e^{-isx} [ψ_y(s)/f_Y(y)] w_s ds
+        """
         fY = self.marginal_pdf_Y(y)
         if fY < 1e-14:
             return 0.0
+
         psi = self.conditional_cf_slice(y)
+        S = self.Lx
+        s_lo = -S if s_min is None else s_min
+        s_hi = S if s_max is None else s_max
 
         def integrand(s):
-            w_s = self._fejer_weight(s, self.Lx)
+            w_s = self._fejer_weight(s, self.Lx)  # your triangular/“Fejér” taper
             return np.exp(-1j * s * x) * (psi(s) / fY) * w_s
 
-        re, _ = quad(lambda s: np.real(integrand(s)), -self.Lx, self.Lx, limit=300)
-        im, _ = quad(lambda s: np.imag(integrand(s)), -self.Lx, self.Lx, limit=300)
+        re, _ = quad(lambda s: np.real(integrand(s)), s_lo, s_hi, limit=quad_limit)
+        im, _ = quad(lambda s: np.imag(integrand(s)), s_lo, s_hi, limit=quad_limit)
         return np.real((re + 1j * im) / (2 * np.pi))
 
     def _fejer_weight(self, s, L):
@@ -90,7 +97,6 @@ class JointCharacteristicFunctionInverter:
             w_t = self._fejer_weight(t, self.Ly)
             return np.real(np.exp(-1j * t * y) * self.phi_joint(0, t) * w_t)
         val, _ = quad(integrand, -self.Ly, self.Ly, limit=300)
-        print(2)
         return val / (2 * np.pi)
 
     def conditional_pdf_X_given_Y(self, x, y):
@@ -129,10 +135,17 @@ class JointCharacteristicFunctionInverter:
             prob, _ = quad(integrand, a, x_upper, limit=300)
             return prob
 
-    # def conditional_probability_point(self, a, y, x_upper=10):
-    #     integrand = lambda x: self.conditional_pdf_X_given_Y(x, y)
-    #     prob, _ = quad(integrand, a, x_upper)
-    #     return prob
+    def conditional_probability_via_1d(self, a, y, x_upper=10.0, quad_limit=300, s_min=None, s_max=None):
+        """
+        Tail probability using the 1D conditional pdf slice:
+            P(X > a | Y=y) = ∫_{x=a}^{x_upper} f_{X|Y=y}(x) dx
+        """
+
+        def integrand(x):
+            return self.conditional_pdf_via_1d(x, y, s_min=s_min, s_max=s_max, quad_limit=quad_limit)
+
+        val, _ = quad(integrand, a, x_upper, limit=quad_limit)
+        return max(val, 0.0)  # small negative due to quadrature noise
 
     def conditional_probability_region_via_slices(self, a, y_range, num_points=5, x_upper=10, detailed=False):
         """
@@ -145,7 +158,6 @@ class JointCharacteristicFunctionInverter:
         p_slices = np.empty_like(ys, dtype=float)
         fY_vals = np.empty_like(ys, dtype=float)
         weighted = np.empty_like(ys, dtype=float)
-        print(ys)
 
         for i, y in enumerate(ys):
             t_start = time.perf_counter()
@@ -176,32 +188,25 @@ class JointCharacteristicFunctionInverter:
 
         return 0.0 if den < 1e-14 else num / den
 
-    def show_expression(self, s=0.0, t=0.0, y_sample=0.0):
-        """
-        Display the underlying CF and PDF structure for debugging.
-        - Shows the expression of marginal CF, conditional CF, and joint CF.
-        - Evaluates them at sample points to confirm they work.
-        """
+    def show_expression(self, s=0.0, t=0.0, y_sample=0.0, x_test=0.0, a=0.0, x_upper=12.0):
         print("=== Expression Inspection ===")
-
-        # Marginal CF (Y)
         if hasattr(self.cf_y, "expression_str") and self.cf_y.expression_str:
             print(f"Marginal CF φ_Y(t): {self.cf_y.expression_str}")
         else:
             print("Marginal CF φ_Y(t): (lambda, no expression string available)")
         print(f"  φ_Y({t}) = {self.cf_y.phi(t)}")
 
-        # Joint CF (s,t)
         print("\nJoint CF φ_{X,Y}(s,t):")
-        print("  Defined as integral over Y of φ_{X|Y}(s) * exp(i t y) * f_Y(y)")
-        print(f"  φ_{{X,Y}}({s},{t}) = {self.phi_joint(s,t)}")
+        print("  Defined as ∫ φ_{X|Y=y}(s) e^{i t y} f_Y(y) dy")
+        print(f"  φ_{{X,Y}}({s},{t}) = {self.phi_joint(s, t)}")
 
-        # Conditional PDF check
         print("\nSample Conditional PDF f_{X|Y}(x|y):")
-        x_test = 0.0
-        cond_pdf = self.conditional_pdf_X_given_Y(x_test, y_sample)
-        print(cond_pdf)
-        print(f"  f_{'{'}X|Y{'}'}({x_test}|Y={y_sample}) = {cond_pdf}")
+        pdf_val = self.conditional_pdf_via_1d(x_test, y_sample)
+        print(f"  f_{{X|Y}}({x_test}|Y={y_sample}) = {pdf_val}")
+
+        print("\nSample Conditional Probability P(X > a | Y=y):")
+        tail = self.conditional_probability_via_1d(a=a, y=y_sample, x_upper=x_upper)
+        print(f"  P(X > {a} | Y={y_sample}) ≈ {tail}")
 
     def plot_conditional_pdf(self, y_values, x_range=(-5, 5), num_points=300, true_pdf=None):
         """
@@ -213,7 +218,6 @@ class JointCharacteristicFunctionInverter:
             num_points: resolution for X-axis.
             true_pdf: optional callable true PDF f(x|y) for comparison (e.g., analytical normal pdf).
         """
-        print(3)
         x_vals = np.linspace(*x_range, num_points)
         plt.figure(figsize=(8, 6))
 
