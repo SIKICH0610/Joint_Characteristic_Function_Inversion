@@ -24,8 +24,8 @@ joint_cf = JointCharacteristicFunctionInverter.from_conditional(
 joint_cf.use_fejer = True  # keep tapering
 
 # >>> If available, route conditional density via slice-then-invert (not used here, but good practice)
-if hasattr(joint_cf, "conditional_pdf_via_1d") and callable(getattr(joint_cf, "conditional_pdf_via_1d")):
-    joint_cf.conditional_pdf_X_given_Y = joint_cf.conditional_pdf_via_1d
+if hasattr(joint_cf, "conditional_pdf_via_1d_quad") and callable(getattr(joint_cf, "conditional_pdf_via_1d_quad")):
+    joint_cf.conditional_pdf_X_given_Y = joint_cf.conditional_pdf_via_1d_quad
 
 print("pass")
 

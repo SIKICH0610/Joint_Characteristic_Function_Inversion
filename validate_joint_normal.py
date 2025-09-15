@@ -1,6 +1,3 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 from scipy.stats import norm
 from Joint_Helper import make_cf, make_conditional_cf
 from Inverse_Fourier import JointCharacteristicFunctionInverter

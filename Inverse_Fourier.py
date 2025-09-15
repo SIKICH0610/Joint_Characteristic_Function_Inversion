@@ -1,12 +1,11 @@
 import numpy as np
 import time
 from scipy.integrate import quad, dblquad
-from scipy.stats import norm, expon, uniform
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 from Joint_Helper import make_cf, make_conditional_cf, CharacteristicFunctionInverter, NormalCF
-from numpy.fft import fftshift, ifft2, fftfreq
-from scipy.interpolate import RegularGridInterpolator
+import time
+from contextlib import contextmanager
+
 
 class JointCharacteristicFunctionInverter:
     def __init__(self, cf_x, cf_y, joint_phi, use_fejer=True):
@@ -16,6 +15,23 @@ class JointCharacteristicFunctionInverter:
         self.Lx = cf_x.L
         self.Ly = cf_y.L
         self.use_fejer = use_fejer  # Toggle Fejér summation
+
+    def enable_timing(self, on: bool = True):
+        """Turn timing prints on/off."""
+        self.timing = bool(on)
+
+    @contextmanager
+    def _timer(self, label: str):
+        """Print elapsed time for a code block when timing is enabled."""
+        if not getattr(self, "timing", False):
+            yield
+            return
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            dt = time.perf_counter() - t0
+            print(f"[{label}] {dt:.3f}s", flush=True)
 
     @classmethod
     def from_conditional(cls, cf_y, conditional_cf_given_y, y_support=(0, 20), p_y=None, damping_alpha=0.01):
@@ -52,12 +68,12 @@ class JointCharacteristicFunctionInverter:
 
         return psi
 
-    def conditional_pdf_via_1d(self, x, y, s_min=None, s_max=None, quad_limit=300):
+    def conditional_pdf_via_1d_quad(self, x, y, s_min=None, s_max=None, quad_limit=300):
         """
         f_{X|Y=y}(x) via 1D Fourier inversion in s:
             (1/2π) ∫ e^{-isx} [ψ_y(s)/f_Y(y)] w_s ds
         """
-        fY = self.marginal_pdf_Y(y)
+        fY = self.marginal_pdf_Y_quad(y)
         if fY < 1e-14:
             return 0.0
 
@@ -91,7 +107,7 @@ class JointCharacteristicFunctionInverter:
                             -self.Ly, self.Ly, lambda _: -self.Lx, lambda _: self.Lx)
         return np.real((val_re + 1j * val_im) / (4 * np.pi ** 2))
 
-    def marginal_pdf_Y(self, y):
+    def marginal_pdf_Y_quad(self, y):
         """Compute marginal PDF f_Y(y) with Fejér weighting"""
         def integrand(t):
             w_t = self._fejer_weight(t, self.Ly)
@@ -102,7 +118,7 @@ class JointCharacteristicFunctionInverter:
     def conditional_pdf_X_given_Y(self, x, y):
         """Compute conditional PDF f_{X|Y}(x|y) using joint and marginal"""
         joint = self.joint_pdf(x, y)
-        marginal = self.marginal_pdf_Y(y)
+        marginal = self.marginal_pdf_Y_quad(y)
         return 0.0 if marginal < 1e-12 else joint / marginal
 
     def conditional_probability(self, a, y, x_upper=10):
@@ -123,7 +139,7 @@ class JointCharacteristicFunctionInverter:
                                     lambda _: a, lambda _: x_upper)
 
             # Denominator: marginal prob
-            marginal_prob, _ = quad(self.marginal_pdf_Y, y_low, y_high)
+            marginal_prob, _ = quad(self.marginal_pdf_Y_quad, y_low, y_high)
 
             return 0.0 if marginal_prob < 1e-12 else joint_prob / marginal_prob
 
@@ -142,7 +158,7 @@ class JointCharacteristicFunctionInverter:
         """
 
         def integrand(x):
-            return self.conditional_pdf_via_1d(x, y, s_min=s_min, s_max=s_max, quad_limit=quad_limit)
+            return self.conditional_pdf_via_1d_quad(x, y, s_min=s_min, s_max=s_max, quad_limit=quad_limit)
 
         val, _ = quad(integrand, a, x_upper, limit=quad_limit)
         return max(val, 0.0)  # small negative due to quadrature noise
@@ -164,7 +180,7 @@ class JointCharacteristicFunctionInverter:
 
             p_y = self.conditional_probability(a=a, y=y, x_upper=x_upper)
             print(p_y)
-            fY_y = self.marginal_pdf_Y(y)
+            fY_y = self.marginal_pdf_Y_quad(y)
             print(fY_y)
 
             p_slices[i] = p_y
@@ -201,11 +217,11 @@ class JointCharacteristicFunctionInverter:
         print(f"  φ_{{X,Y}}({s},{t}) = {self.phi_joint(s, t)}")
 
         print("\nSample Conditional PDF f_{X|Y}(x|y):")
-        pdf_val = self.conditional_pdf_via_1d(x_test, y_sample)
+        pdf_val = self.conditional_pdf_via_1d(x_test, y_sample)  # fast default
         print(f"  f_{{X|Y}}({x_test}|Y={y_sample}) = {pdf_val}")
 
         print("\nSample Conditional Probability P(X > a | Y=y):")
-        tail = self.conditional_probability_via_1d(a=a, y=y_sample, x_upper=x_upper)
+        tail = self.conditional_probability_point(a=a, y=y_sample)  # fast default
         print(f"  P(X > {a} | Y={y_sample}) ≈ {tail}")
 
     def plot_conditional_pdf(self, y_values, x_range=(-5, 5), num_points=300, true_pdf=None):
@@ -236,3 +252,93 @@ class JointCharacteristicFunctionInverter:
         plt.grid(True)
         plt.show()
         return None
+
+    @staticmethod
+    def _gl_nodes_sym(L, N):
+        """Gauss–Legendre nodes/weights on [-L, L]."""
+        z, w = np.polynomial.legendre.leggauss(N)  # z in (-1,1)
+        nodes = L * z
+        weights = L * w
+        return nodes, weights
+
+    @staticmethod
+    def _gl_nodes_pos(L, N):
+        """Gauss–Legendre nodes/weights on (0, L). Excludes 0 so /s is safe."""
+        z, w = np.polynomial.legendre.leggauss(N)  # z in (-1,1)
+        nodes = 0.5 * (z + 1.0) * L
+        weights = 0.5 * L * w
+        return nodes, weights
+
+    def _psi_y_gl(self, y, s_vals, Nt=96):
+        """
+        Vectorized ψ_y(s) ≈ (1/2π) ∑_j e^{-i t_j y} φ_{X,Y}(s, t_j) w_j * Fejér(t_j).
+        Computes ψ for all s_vals at once using fixed t-nodes (no inner quad).
+        """
+        Ns = np.atleast_1d(s_vals).size
+        with self._timer(f"psi_y_gl(y={y:.3g}, Nt={Nt}, Ns={Ns})"):
+            t_nodes, t_w = self._gl_nodes_sym(self.Ly, Nt)
+            w_taper = (np.maximum(1.0 - np.abs(t_nodes) / self.Ly, 0.0)
+                       if self.use_fejer else 1.0)
+            base = np.exp(-1j * t_nodes * y) * t_w * w_taper
+
+            s_vals = np.atleast_1d(s_vals)
+            try:
+                Phi = self.phi_joint(s_vals[:, None], t_nodes[None, :])
+            except Exception:
+                Phi = np.empty((s_vals.size, t_nodes.size), dtype=complex)
+                for i, s in enumerate(s_vals):
+                    try:
+                        Phi[i, :] = self.phi_joint(s, t_nodes)
+                    except Exception:
+                        Phi[i, :] = np.array([self.phi_joint(s, tj) for tj in t_nodes], dtype=complex)
+
+            psi = (Phi * base[None, :]).sum(axis=1) / (2.0 * np.pi)
+            return psi
+
+    def marginal_pdf_Y(self, y, Nt=96):
+        """Fast 1D inversion for f_Y(y) using fixed t-nodes."""
+        with self._timer(f"marginal_pdf_Y(y={y:.3g}, Nt={Nt})"):
+            t_nodes, t_w = self._gl_nodes_sym(self.Ly, Nt)
+            w_taper = (np.maximum(1.0 - np.abs(t_nodes)/self.Ly, 0.0)
+                       if self.use_fejer else 1.0)
+            try:
+                phiY = self.phi_joint(0.0, t_nodes)
+            except Exception:
+                phiY = np.array([self.phi_joint(0.0, tt) for tt in t_nodes], dtype=complex)
+            val = np.real(np.exp(-1j * t_nodes * y) * phiY * w_taper) @ t_w
+            return float(val / (2.0 * np.pi))
+
+    def conditional_pdf_via_1d(self, x, y, Ns=96, Nt=96):
+        """
+        f_{X|Y=y}(x) via fixed-node ψ_y(s) + Gauss–Legendre in s (no nested quad).
+        """
+        fY = self.marginal_pdf_Y(y, Nt=Nt)
+        if fY < 1e-14:
+            return 0.0
+
+        s_nodes, s_w = self._gl_nodes_sym(self.Lx, Ns)
+        w_s = (np.maximum(1.0 - np.abs(s_nodes) / self.Lx, 0.0)
+               if self.use_fejer else 1.0)
+
+        psi = self._psi_y_gl(y, s_nodes, Nt=Nt)  # (Ns,)
+        integrand = np.exp(-1j * s_nodes * x) * (psi / fY) * w_s  # (Ns,)
+        val = np.real(integrand) @ s_w
+        return float(val / (2.0 * np.pi))
+
+    def conditional_probability_point(self, a, y, Ns=256, Nt=96):
+        """
+        Gil–Pelaez tail: P(X>a|Y=y) = 1/2 - (1/π) ∫_0^{Lx} Im[e^{-i s a} φ_{X|Y=y}(s)/s] ds,
+        evaluated with Gauss–Legendre nodes on (0, Lx) (so s≠0).
+        """
+        with self._timer(f"P(X>{a}|Y={y}) via 1D fast (Ns={Ns}, Nt={Nt})"):
+            fY = self.marginal_pdf_Y(y, Nt=Nt)
+            if fY < 1e-14:
+                return 0.0
+            s_pos, w_pos = self._gl_nodes_pos(self.Lx, Ns)
+            w_s = ((1.0 - s_pos / self.Lx) if self.use_fejer else 1.0)
+            with self._timer("  compute psi_y on s>0"):
+                psi = self._psi_y_gl(y, s_pos, Nt=Nt)
+            phi_cond = psi / fY
+            integrand = np.imag(np.exp(-1j * s_pos * a) * (phi_cond / s_pos)) * w_s
+            val = (integrand * w_pos).sum()
+            return float(0.5 + val / np.pi)

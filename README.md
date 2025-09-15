@@ -103,7 +103,7 @@ $$
     3.1 `JointCharacteristicFunctionInverter` – Joint CF inversion & conditional probability  
         - `from_conditional()` – Build joint CF from marginal + conditional CF  
         - `joint_pdf()` – Joint density $f(x,y)$  
-        - `marginal_pdf_Y()` – Marginal density $f_Y(y)$  
+        - `marginal_pdf_Y_quad()` – Marginal density $f_Y(y)$  
         - `conditional_pdf_X_given_Y()` – Conditional density $f(X|Y=y)$  
         - `conditional_probability()` – Compute $P(X > a \mid Y=y)$ or $P(X > a \mid Y \in [y_1,y_2])$  
         - `plot_joint_pdf()` – Contour/surface plotting
