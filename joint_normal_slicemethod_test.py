@@ -2,7 +2,7 @@ import numpy as np
 from scipy.stats import norm
 from scipy.integrate import quad
 from Joint_Helper import make_cf, make_conditional_cf
-from Inverse_Fourier import JointCharacteristicFunctionInverter
+from Inverse_Fourier_Interface import JointCharacteristicFunctionInverter
 
 # Define Y ~ N(0,1), X|Y=y ~ N(2y,1)
 cf_y = make_cf("normal", {"mu": 0, "sigma": 1})
